@@ -1,8 +1,8 @@
 # 🟣 jelly-slime
 
-> Matter.js Soft Body로 구현된 거대한 네온 슬라임을 마우스로 잡아당기고, 늘리고, 벽에 던지세요 — Spring-Mass 제약이 출렁이며 돌아옵니다.
+> Verlet Integration + Spring-Mass System으로 구현된 거대한 네온 슬라임을 마우스로 잡아당기고, 늘리고, 벽에 던지세요 — 그물망 제약이 출렁이며 돌아옵니다.
 
-화면 중앙의 거대한 네온 슬라임이 마우스 드래그를 따라 늘어나고, 벽에 부딪힐 때마다 찌그러지며 출렁거리는 인터랙티브 웹페이지. Matter.js Soft Body 컴포지트(Spring-Mass 제약) + Canvas 2D 렌더링으로 구현했습니다. 외부 의존성은 Matter.js 단 하나, 단일 HTML 파일에 모든 코드가 담겨 있습니다.
+화면 중앙의 거대한 네온 슬라임이 마우스 드래그를 따라 늘어나고, 벽에 부딪힐 때마다 찌그러지며 출렁거리는 인터랙티브 웹페이지. Verlet Integration + Spring-Mass System을 Canvas 2D 위에 직접 구현했습니다. 외부 의존성 0개, 단일 HTML 파일에 모든 코드가 담겨 있습니다.
 
 ---
 
@@ -14,7 +14,7 @@
 |---|---|
 | ![Demo](https://img.shields.io/badge/Live-Demo-7C3AED?style=for-the-badge&logo=vercel&logoColor=white) | [![Repo](https://img.shields.io/badge/GitHub-sigco3111%2Fjelly--slime-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sigco3111/jelly-slime) |
 | ![Status](https://img.shields.io/badge/Status-Live-22C55E?style=flat-square) | ![Stack](https://img.shields.io/badge/Stack-Vanilla_JS-F7DF1E?style=flat-square&logo=javascript&logoColor=black) |
-| ![License](https://img.shields.io/badge/License-MIT-F1C40F?style=flat-square) | ![Deps](https://img.shields.io/badge/Dependencies-1_(Matter.js)-9CA3AF?style=flat-square) |
+| ![License](https://img.shields.io/badge/License-MIT-F1C40F?style=flat-square) | ![Deps](https://img.shields.io/badge/Dependencies-0_(Verlet_직접구현)-9CA3AF?style=flat-square) |
 
 ### 🎮 빠른 사용법
 1. 위 데모 링크 클릭 → 브라우저에서 페이지 열기
@@ -34,7 +34,7 @@
 | **실행 환경** | OpenCode CLI |
 | **저장소** | [`sigco3111/jelly-slime`](https://github.com/sigco3111/jelly-slime) |
 | **라이선스** | MIT |
-| **의존성** | 1개 (Matter.js, CDN 핀) |
+| **의존성** | 0개 (Vanilla JS, 단일 HTML, Verlet 직접 구현) |
 
 ### 📝 사용된 프롬프트 (원문)
 
@@ -53,12 +53,12 @@ Verlet Integration on Canvas if external libraries are restricted.
 
 ## ✨ 주요 특징 (Features)
 
-- 🧬 **Soft Body 물리** — Matter.js `Composites.softBody()` + Spring-Mass 제약 기반
+- 🧬 **Soft Body 물리** — Verlet Integration + Spring-Mass 직접 구현
 - ✋ **마우스 드래그** — 임의 노드 잡아당겨 슬라임 형태 변형
 - 💥 **벽 충돌 출렁임** — viscous damping + 구조 제약으로 자연스러운 찌그러짐
 - 🔬 **그물망 시각화** — 내부 spring/constraint 연결 구조가 실시간으로 보임
 - 🌈 **네온 발광** — additive blending + 다중 그림자로 캔디 글로우 효과
-- 📦 **단일 HTML** — Matter.js CDN 핀, 외부 빌드/번들 없음
+- 📦 **단일 HTML** — 외부 의존성 0개, 파일 하나만 열면 실행
 
 ---
 
@@ -82,7 +82,7 @@ python3 -m http.server 8000
 # → http://localhost:8000
 ```
 
-> 🛜 **오프라인 주의**: Matter.js는 CDN에서 핀(`<script>` 태그에 URL 명시). 한 번 온라인에서 열면 브라우저 캐시에 저장되어 이후 오프라인에서도 동작합니다.
+> 🌐 **오프라인**: 외부 의존성이 없어서 인터넷 없이도 동작합니다.
 
 ---
 
@@ -101,12 +101,12 @@ python3 -m http.server 8000
 
 | 영역 | 사용 기술 |
 |---|---|
-| **물리 엔진** | Matter.js (Soft Body Composites, Spring-Mass Constraints) |
+| **물리 엔진** | 직접 구현한 Verlet Integration (Spring-Mass System) |
 | **렌더링** | HTML5 Canvas 2D Context |
-| **그물망 시각화** | Custom Canvas overlay (constraints 라인 렌더링) |
-| **마우스 입력** | Matter.js MouseConstraint |
-| **루프** | `requestAnimationFrame` (Matter.js Engine Runner) |
-| **의존성** | 1개 (Matter.js, CDN 핀) |
+| **그물망 시각화** | Canvas overlay (spring/constraint 라인 실시간 렌더링) |
+| **마우스 입력** | Pointer events + Verlet point grabbing |
+| **루프** | `requestAnimationFrame` |
+| **의존성** | 0개 (단일 HTML, 외부 라이브러리 없음) |
 
 ---
 
@@ -114,7 +114,7 @@ python3 -m http.server 8000
 
 ```
 jelly-slime/
-├── index.html      # 단일 HTML (HTML + CSS + Matter.js 임포트 + 모든 JS 포함)
+├── index.html      # 단일 HTML (HTML + CSS + 모든 JS 포함, 외부 의존성 없음)
 ├── README.md       # 한국어
 └── .gitignore
 ```
@@ -127,7 +127,7 @@ jelly-slime/
 
 | 결정 포인트 | 선택 | 이유 |
 |---|---|---|
-| **물리 엔진** | Matter.js Soft Body | 검증된 spring-mass 시스템 + 마우스 제약 통합이 가장 단순 |
+| **물리 엔진** | Verlet Integration + Spring-Mass 직접 구현 | 0 deps, 프롬프트의 Implementation Advice 두 번째 옵션 채택 |
 | **렌더 모드** | 모든 spring/constraint 가시화 | "내부 그물망 구조"라는 요구사항과 직접 일치 |
 | **색상 팔레트** | 네온 마젠타 + 시안 액센트 | 배경 다크에 형광 발광이 가장 효과적 |
 | **감쇠 정책** | viscous damping + 구조 제약 유지 | 충돌 후 출렁임은 유지하되 슬라임이 깨지진 않음 |
@@ -137,16 +137,17 @@ jelly-slime/
 `index.html` 상단/물리 부분에서 다음 상수를 조정하면 분위기를 바꿀 수 있어요:
 
 ```js
-// Matter.js Composites.softBody 옵션
-{
-  stiffness: 0.05,        // 낮출수록 부드럽고 늘어짐 (0.01 ~ 0.2)
-  damping: 0.1,           // 높일수록 충돌 후 빨리 가라앉음 (0.0 ~ 1.0)
-  frictionAir: 0.01,      // 공기 저항
-  render: { visible: true } // 그물망 가시화 on/off
-}
+// Verlet 통합 옵션 (코드 상단에서 조정)
+const CONFIG = {
+  SPRING_STIFFNESS: 0.05,    // 낮출수록 부드럽고 늘어남 (0.01 ~ 0.2)
+  DAMPING: 0.1,              // 높일수록 충돌 후 빨리 가라앉음 (0.0 ~ 1.0)
+  AIR_RESISTANCE: 0.01,      // 공기 저항
+  GRID_RESOLUTION: 8,        // 슬라임 내 노드 수 (가로/세로)
+  WALL_BOUNCE: 0.4           // 벽 충돌 시 반발 계수
+};
 ```
 
-고급 사용자용: `Matter.js` 대신 **Verlet Integration + Canvas** 직접 구현으로 바꿔서 의존성을 0으로 만들 수도 있어요 (프롬프트의 `Implementation Advice` 두 번째 옵션).
+고급 사용자용: Verlet Integration의 시간 간격(`dt`)이나 constraint solver 반복 횟수를 조정해 더 단단한/부드러운 질감을 만들 수 있어요.
 
 ---
 
