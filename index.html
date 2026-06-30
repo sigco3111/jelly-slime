@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Neon Jelly Slime — Spring-Mass Soft Body</title>
+<style>
+  :root {
+    --bg-0: #05020d;
+    --bg-1: #0b0420;
+    --grid: rgba(255, 64, 224, 0.07);
+    --neon-magenta: #ff3df5;
+    --neon-cyan:    #38f5ff;
+    --neon-violet:  #9b4dff;
+    --text: #e9e6ff;
+    --muted: #8a82b8;
+    --panel: rgba(20, 8, 40, 0.55);
+    --panel-border: rgba(255, 61, 245, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, var(--bg-1) 0%, var(--bg-0) 70%, #000 100%);
+    color: var(--text);
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
+    touch-action: none;
+  }
+  body.dragging { cursor: grabbing; }
+  body.hovering-node { cursor: grab; }
+  body:active { cursor: grabbing; }
+  canvas {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  .panel {
+    position: fixed;
+    z-index: 10;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 0 24px rgba(255, 61, 245, 0.18), inset 0 0 14px rgba(155, 77, 255, 0.08);
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: none;
+  }
+  .panel h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--neon-magenta);
+    text-shadow: 0 0 8px rgba(255, 61, 245, 0.6);
+    margin-bottom: 6px;
+  }
+  .panel .sub {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .panel .row { display: flex; justify-content: space-between; gap: 18px; }
+  .panel .k { color: var(--muted); }
+  .panel .v { color: var(--neon-cyan); text-shadow: 0 0 6px rgba(56, 245, 255, 0.5); font-variant-numeric: tabular-nums; }
+
+  #title-panel { top: 18px; left: 18px; max-width: 320px; }
+  #hud-panel   { top: 18px; right: 18px; min-width: 200px; }
+  #help-panel  { bottom: 18px; left: 50%; transform: translateX(-50%); text-align: center; }
+
+  #help-panel kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    border: 1px solid rgba(255, 61, 245, 0.5);
+    border-radius: 4px;
+    background: rgba(255, 61, 245, 0.08);
+    font-size: 10px;
+    color: var(--neon-magenta);
+    margin: 0 2px;
+    text-shadow: 0 0 6px rgba(255, 61, 245, 0.5);
+  }
+  #help-panel .hint { color: var(--muted); font-size: 11px; }
+
+  #settings-panel {
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 240px;
+    pointer-events: none; /* panel chrome passes through; only inputs capture */
+  }
+  #settings-panel input[type=range] { pointer-events: auto; }
+  .slider-row {
+    display: grid;
+    grid-template-columns: 70px 1fr 44px;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+  }
+  .slider-row .k { color: var(--muted); font-size: 11px; }
+  .slider-row .v {
+    color: var(--neon-cyan);
+    font-size: 10px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(56, 245, 255, 0.4);
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, rgba(255, 61, 245, 0.3), rgba(56, 245, 255, 0.3));
+    border-radius: 2px;
+    outline: none;
+    margin: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--neon-magenta);
+    box-shadow: 0 0 8px rgba(255, 61, 245, 0.8);
+    cursor: pointer;
+    border: 1px solid #fff;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--neon-magenta);
+    box-shadow: 0 0 8px rgba(255, 61, 245, 0.8);
+    cursor: pointer;
+    border: 1px solid #fff;
+  }
+  #fps-spark {
+    display: block;
+    width: 100%;
+    height: 36px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(255, 61, 245, 0.18);
+    padding-top: 4px;
+  }
+
+  /* Halo and body pulse with squash — handled in JS */
+</style>
+</head>
+<body>
+  <canvas id="slime"></canvas>
+
+  <div id="title-panel" class="panel">
+    <h1>Neon Jelly Slime</h1>
+    <div class="sub">Spring-Mass soft body · Verlet integration</div>
+  </div>
+
+  <div id="hud-panel" class="panel">
+    <div class="row"><span class="k">Nodes</span><span class="v" id="hud-nodes">—</span></div>
+    <div class="row"><span class="k">Springs</span><span class="v" id="hud-springs">—</span></div>
+    <div class="row"><span class="k">FPS</span><span class="v" id="hud-fps">—</span></div>
+    <div class="row"><span class="k">Squash</span><span class="v" id="hud-squash">—</span></div>
+    <div class="row"><span class="k">Stretch</span><span class="v" id="hud-stretch">—</span></div>
+  </div>
+
+  <div id="help-panel" class="panel">
+    <span class="hint">
+      <kbd>drag</kbd> stretch &nbsp;·&nbsp;
+      <kbd>fling</kbd> throw &nbsp;·&nbsp;
+      <kbd>tap</kbd> push &nbsp;·&nbsp;
+      <kbd>R</kbd> reset &nbsp;·&nbsp;
+      <kbd>G</kbd> mesh &nbsp;·&nbsp;
+      <kbd>B</kbd> body &nbsp;·&nbsp;
+      <kbd>H</kbd> halo
+    </span>
+  </div>
+
+  <div id="settings-panel" class="panel">
+    <h1>Tuning</h1>
+    <div class="slider-row" data-cfg="springStiffness" data-min="0.05" data-max="0.85" data-step="0.01">
+      <span class="k">Stiffness</span>
+      <input type="range" id="s-stiffness">
+      <span class="v" id="v-stiffness">—</span>
+    </div>
+    <div class="slider-row" data-cfg="gravity" data-min="0" data-max="1.2" data-step="0.01">
+      <span class="k">Gravity</span>
+      <input type="range" id="s-gravity">
+      <span class="v" id="v-gravity">—</span>
+    </div>
+    <div class="slider-row" data-cfg="damping" data-min="0.95" data-max="1.000" data-step="0.001">
+      <span class="k">Damping</span>
+      <input type="range" id="s-damping">
+      <span class="v" id="v-damping">—</span>
+    </div>
+    <div class="slider-row" data-cfg="dragRadius" data-min="20" data-max="160" data-step="1">
+      <span class="k">Grab</span>
+      <input type="range" id="s-drag">
+      <span class="v" id="v-drag">—</span>
+    </div>
+    <div class="slider-row" data-cfg="volumePreserve" data-min="0" data-max="1.0" data-step="0.01">
+      <span class="k">Volume</span>
+      <input type="range" id="s-volume">
+      <span class="v" id="v-volume">—</span>
+    </div>
+    <div class="slider-row" data-cfg="clickImpulse" data-min="0" data-max="14" data-step="0.1">
+      <span class="k">Tap force</span>
+      <input type="range" id="s-impulse">
+      <span class="v" id="v-impulse">—</span>
+    </div>
+    <canvas id="fps-spark" width="180" height="36"></canvas>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ===========================================================================
+  // CONFIG  ──  tweak these to change how the slime feels
+  // ===========================================================================
+  const CFG = {
+    // Visuals
+    backgroundGrid:     true,
+    renderMesh:         true,
+    renderBodyFill:     true,
+    renderOutline:      true,
+    renderHalo:         true,
+
+    // Neon palette
+    colorPrimary:       '#ff3df5', // magenta
+    colorAccent:        '#38f5ff', // cyan
+    colorInner:         '#9b4dff', // violet
+
+    // Slime shape
+    outerNodes:         56,         // points around the outer ring
+    innerLayers:        2,          // concentric rings inside
+    innerNodesPerLayer: [10, 4],    // nodes per inner layer (outer → inner)
+    outerRadiusFactor:  0.32,       // fraction of min(viewport) used as starting radius
+
+    // Physics — Verlet
+    gravity:            0.45,       // px / frame² downward
+    damping:            0.988,      // velocity damping (1.0 = none)
+    constraintIters:    10,         // constraint relaxation passes per frame
+    springStiffness:    0.32,       // 0..1 — how strongly each constraint pulls (lower = stretchier)
+    wallBounce:         0.55,       // energy retained on wall hit (0..1)
+    wallFriction:       0.82,       // tangential damping at wall hit
+    dragRadius:         60,         // px — max distance from mouse to grab a node
+
+    // Squash / impact feedback
+    squashDecay:        0.92,       // how fast squash flash decays each frame
+
+    // Volume preservation (0..1) — keeps the slime from pancake-ing
+    volumePreserve:     0.45,
+
+    // Drip particles
+    dripEnabled:        true,
+    dripThreshold:      1.4,        // min |velocity| at node to spawn drip
+    dripRate:           0.10,       // probability per qualifying node per frame
+    dripLife:           1.2,        // seconds
+
+    // Shockwaves
+    shockwaveEnabled:   true,
+    shockwaveThreshold: 4.0,        // min impact speed to spawn one
+    shockwaveLife:      0.7,        // seconds
+    shockwaveMaxRadius: 280,        // px
+
+    // Click impulse (push the slime by tapping)
+    clickImpulse:       6.0,        // px/frame velocity applied
+    clickRadius:        180,        // px — falloff radius from click point
+    clickDragThreshold: 8,          // px movement before click becomes a drag
+
+    // Performance
+    targetFps:          60,
+  };
+
+  // ===========================================================================
+  // STATE
+  // ===========================================================================
+  const canvas = document.getElementById('slime');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  let W = 0, H = 0;
+  let cx = 0, cy = 0;        // viewport center
+  let baseRadius = 200;      // recomputed on resize
+
+  const nodes  = [];   // all nodes (outer + inner)
+  const rings  = [];   // rings[0] = outer ring nodes, rings[1..] = inner rings
+  const springs = [];  // all spring constraints
+
+  const drips = [];       // {x, y, vx, vy, life, maxLife, color}
+  const shockwaves = [];  // {x, y, life, maxLife, maxRadius, color}
+
+  // Pre-computed rest area for volume preservation
+  let restArea = 0;
+  let restPerimeter = 0;
+
+  let drag = null;     // { node, offX, offY, lastX, lastY, vx, vy } when user is dragging
+  let mouseX = 0, mouseY = 0;
+  let mouseLastX = 0, mouseLastY = 0;
+  let mouseVx = 0, mouseVy = 0;
+  let mouseDownX = 0, mouseDownY = 0;
+  let mouseDownTime = 0;
+  let hoveredNode = null;
+  let squash = 0;      // 0..1+ — recent impact intensity
+  let lastImpactSpeed = 0;
+  let maxStretch = 0;  // tracked for HUD
+
+  // FPS tracking
+  let fps = 0;
+  let fpsFrames = 0;
+  let fpsLast = performance.now();
+
+  // ===========================================================================
+  // RESIZE
+  // ===========================================================================
+  function resize() {
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    cx = W / 2;
+    cy = H / 2;
+    baseRadius = Math.min(W, H) * CFG.outerRadiusFactor;
+  }
+
+  // ===========================================================================
+  // BUILD THE SLIME
+  // ===========================================================================
+  function buildSlime() {
+    nodes.length = 0;
+    rings.length = 0;
+    springs.length = 0;
+
+    // Outer ring
+    const outer = [];
+    const N = CFG.outerNodes;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const r = baseRadius * (1 + 0.05 * Math.sin(a * 3)); // subtle shape variation
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      const node = makeNode(x, y, 4.5, 'outer');
+      outer.push(node);
+      nodes.push(node);
+    }
+    rings.push(outer);
+
+    // Inner concentric rings
+    for (let layer = 0; layer < CFG.innerLayers; layer++) {
+      const count = CFG.innerNodesPerLayer[layer] || 6;
+      const ringRadius = baseRadius * (0.62 - layer * 0.28);
+      const ring = [];
+      // Offset angle so inner rings interleave visually with outer
+      const offset = (layer % 2) * (Math.PI / count);
+      for (let i = 0; i < count; i++) {
+        const a = offset + (i / count) * Math.PI * 2;
+        const x = cx + Math.cos(a) * ringRadius;
+        const y = cy + Math.sin(a) * ringRadius;
+        const node = makeNode(x, y, 3.6, layer === CFG.innerLayers - 1 ? 'core' : 'inner');
+        ring.push(node);
+        nodes.push(node);
+      }
+      rings.push(ring);
+    }
+
+    // ---- Springs ----
+    // 1) Structural (adjacent on outer ring) — strong
+    for (let i = 0; i < N; i++) {
+      springs.push(makeSpring(outer[i], outer[(i + 1) % N], 1.0));
+    }
+    // 2) Bend springs (skip-1 on outer ring) — keep shape, prevent kinks
+    for (let i = 0; i < N; i++) {
+      springs.push(makeSpring(outer[i], outer[(i + 2) % N], 0.55));
+    }
+    // 3) Shear / long-range (skip-3) — visible web feel
+    for (let i = 0; i < N; i++) {
+      springs.push(makeSpring(outer[i], outer[(i + 4) % N], 0.32));
+    }
+
+    // 4) Radial: outer → first inner ring (every other outer node)
+    if (rings.length > 1) {
+      const inner1 = rings[1];
+      const M1 = inner1.length;
+      for (let i = 0; i < N; i++) {
+        // connect outer i to nearest inner1 node
+        const targetIdx = Math.round((i / N) * M1) % M1;
+        springs.push(makeSpring(outer[i], inner1[targetIdx], 0.5));
+      }
+      // Structural around inner1
+      for (let i = 0; i < M1; i++) {
+        springs.push(makeSpring(inner1[i], inner1[(i + 1) % M1], 0.75));
+      }
+    }
+
+    // 5) Inner→inner cross-links (web feel)
+    if (rings.length > 1) {
+      const inner1 = rings[1];
+      const M1 = inner1.length;
+      for (let i = 0; i < M1; i++) {
+        springs.push(makeSpring(inner1[i], inner1[(i + 2) % M1], 0.4));
+      }
+    }
+
+    // 6) Layer-to-layer (inner ring → next inner ring) + core ring structural
+    for (let layer = 1; layer < rings.length - 1; layer++) {
+      const from = rings[layer];
+      const to   = rings[layer + 1];
+      const F = from.length, T = to.length;
+      for (let i = 0; i < F; i++) {
+        const targetIdx = Math.round((i / F) * T) % T;
+        springs.push(makeSpring(from[i], to[targetIdx], 0.6));
+      }
+    }
+    // 7) Final core ring structural
+    const last = rings[rings.length - 1];
+    for (let i = 0; i < last.length; i++) {
+      springs.push(makeSpring(last[i], last[(i + 1) % last.length], 0.9));
+    }
+    // 8) Diagonals in core
+    if (last.length >= 4) {
+      for (let i = 0; i < last.length; i++) {
+        springs.push(makeSpring(last[i], last[(i + 2) % last.length], 0.45));
+      }
+    }
+
+    // HUD
+    document.getElementById('hud-nodes').textContent   = String(nodes.length);
+    document.getElementById('hud-springs').textContent = String(springs.length);
+
+    // Pre-compute rest area + perimeter for volume preservation
+    const ox = rings[0];
+    let area = 0, perim = 0;
+    for (let i = 0; i < ox.length; i++) {
+      const a = ox[i], b = ox[(i + 1) % ox.length];
+      area += (a.x * b.y - b.x * a.y);
+      perim += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    restArea = Math.abs(area) * 0.5;
+    restPerimeter = perim;
+  }
+
+  function makeNode(x, y, radius, kind) {
+    return {
+      x, y,                 // current position
+      px: x, py: y,         // previous position (Verlet)
+      ax: 0, ay: 0,         // accumulated accel
+      radius,
+      pinned: false,
+      kind,                  // 'outer' | 'inner' | 'core'
+    };
+  }
+
+  function makeSpring(a, b, stiffnessScale) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const restLength = Math.hypot(dx, dy);
+    return {
+      a, b,
+      restLength,
+      stiffness: CFG.springStiffness * stiffnessScale,
+    };
+  }
+
+  // ===========================================================================
+  // PHYSICS STEP — Verlet integration + constraint relaxation
+  // ===========================================================================
+  function step() {
+    const dt2 = 1.0; // we work in unit-time steps; tuned for visual feel
+
+    // ---- 1) Verlet integrate ----
+    const g = CFG.gravity;
+    const d = CFG.damping;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (n.pinned) {
+        // dragged: integrate by snapping prev = current (mouse moves it)
+        n.px = n.x;
+        n.py = n.y;
+        continue;
+      }
+      const vx = (n.x - n.px) * d;
+      const vy = (n.y - n.py) * d;
+      const nx = n.x + vx + n.ax * dt2;
+      const ny = n.y + vy + (n.ay + g) * dt2;
+      n.px = n.x; n.py = n.y;
+      n.x = nx; n.y = ny;
+      n.ax = 0; n.ay = 0;
+    }
+
+    // ---- 2) Constraint relaxation (springs) ----
+    const iters = CFG.constraintIters;
+    let frameMaxStretch = 0;
+    for (let it = 0; it < iters; it++) {
+      for (let i = 0; i < springs.length; i++) {
+        const s = springs[i];
+        const a = s.a, b = s.b;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 1e-6) dist = 1e-6;
+        const diff = (dist - s.restLength) / dist;
+        const k = s.stiffness * 0.5;
+        const ox = dx * diff * k;
+        const oy = dy * diff * k;
+
+        if (it === 0) {
+          const stretch = dist / s.restLength;
+          if (stretch > frameMaxStretch) frameMaxStretch = stretch;
+        }
+
+        if (!a.pinned) { a.x += ox; a.y += oy; }
+        if (!b.pinned) { b.x -= ox; b.y -= oy; }
+      }
+    }
+    if (frameMaxStretch > maxStretch) maxStretch = frameMaxStretch;
+
+    // ---- 2.5) Volume preservation (area-based pressure) ----
+    if (CFG.volumePreserve > 0) {
+      const ox = rings[0];
+      let area = 0;
+      for (let i = 0; i < ox.length; i++) {
+        const a = ox[i], b = ox[(i + 1) % ox.length];
+        area += (a.x * b.y - b.x * a.y);
+      }
+      area = Math.abs(area) * 0.5;
+      const ratio = restArea > 0 ? area / restArea : 1;       // <1 compressed, >1 expanded
+      const pressure = (1 - ratio) * CFG.volumePreserve * 0.25;
+      // Push each outer node outward (from centroid) when compressed,
+      // pull inward when expanded.
+      const cx2 = cx, cy2 = cy;
+      for (let i = 0; i < ox.length; i++) {
+        const n = ox[i];
+        if (n.pinned) continue;
+        const dx = n.x - cx2;
+        const dy = n.y - cy2;
+        const d = Math.hypot(dx, dy) || 1e-6;
+        n.x += (dx / d) * pressure * d * 0.06;
+        n.y += (dy / d) * pressure * d * 0.06;
+      }
+    }
+
+    // ---- 3) Wall collisions + squash detection ----
+    let maxImpact = 0;
+    const margin = 6;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      let hit = false;
+      let impactSpeed = 0;
+
+      if (n.x < margin) {
+        impactSpeed = Math.max(impactSpeed, Math.abs(n.x - n.px));
+        n.x = margin;
+        n.px = n.x + (n.x - n.px) * CFG.wallBounce;
+        n.py = n.y + (n.py - n.y) * CFG.wallFriction;
+        hit = true;
+      } else if (n.x > W - margin) {
+        impactSpeed = Math.max(impactSpeed, Math.abs(n.x - n.px));
+        n.x = W - margin;
+        n.px = n.x + (n.x - n.px) * CFG.wallBounce;
+        n.py = n.y + (n.py - n.y) * CFG.wallFriction;
+        hit = true;
+      }
+      if (n.y < margin) {
+        impactSpeed = Math.max(impactSpeed, Math.abs(n.y - n.py));
+        n.y = margin;
+        n.py = n.y + (n.y - n.py) * CFG.wallBounce;
+        hit = true;
+      } else if (n.y > H - margin) {
+        impactSpeed = Math.max(impactSpeed, Math.abs(n.y - n.py));
+        n.y = H - margin;
+        n.py = n.y + (n.y - n.py) * CFG.wallBounce;
+        hit = true;
+      }
+
+      if (hit && impactSpeed > 1.2) {
+        if (impactSpeed > maxImpact) maxImpact = impactSpeed;
+
+        // Spawn shockwave at impact site for hard hits
+        if (CFG.shockwaveEnabled && impactSpeed > CFG.shockwaveThreshold) {
+          spawnShockwave(n.x, n.y, impactSpeed);
+        }
+      }
+
+      // Drip particles from any node moving fast or stretched far
+      if (CFG.dripEnabled && n.kind === 'outer') {
+        const v = Math.hypot(n.x - n.px, n.y - n.py);
+        if (v > CFG.dripThreshold && Math.random() < CFG.dripRate) {
+          spawnDrip(n.x, n.y, n.x - n.px, n.y - n.py);
+        }
+      }
+    }
+
+    if (maxImpact > lastImpactSpeed) {
+      squash = Math.min(1.6, squash + maxImpact * 0.05);
+    }
+    lastImpactSpeed = maxImpact;
+    squash *= CFG.squashDecay;
+    if (squash < 0.001) squash = 0;
+
+    // ---- 4) Update particles + shockwaves ----
+    updateDrips();
+    updateShockwaves();
+  }
+
+  // ---- Particle spawning ----
+  function spawnDrip(x, y, vx, vy) {
+    if (drips.length > 240) return;
+    drips.push({
+      x, y,
+      vx: vx * 0.3 + (Math.random() - 0.5) * 0.6,
+      vy: vy * 0.3 + 0.4,
+      life: CFG.dripLife,
+      maxLife: CFG.dripLife,
+      size: 1.2 + Math.random() * 1.8,
+    });
+  }
+  function spawnShockwave(x, y, intensity) {
+    if (shockwaves.length > 12) shockwaves.shift();
+    shockwaves.push({
+      x, y,
+      life: CFG.shockwaveLife,
+      maxLife: CFG.shockwaveLife,
+      maxRadius: CFG.shockwaveMaxRadius * clamp(intensity / 8, 0.4, 1.6),
+      intensity,
+    });
+  }
+  function updateDrips() {
+    const dt = 1.0;
+    for (let i = drips.length - 1; i >= 0; i--) {
+      const d = drips[i];
+      d.vy += CFG.gravity * 0.25 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.life -= dt / 60;
+      if (d.life <= 0 || d.y > H + 20) {
+        drips.splice(i, 1);
+      }
+    }
+  }
+  function updateShockwaves() {
+    const dt = 1.0 / 60;
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const s = shockwaves[i];
+      s.life -= dt;
+      if (s.life <= 0) shockwaves.splice(i, 1);
+    }
+  }
+
+  // ===========================================================================
+  // RENDERING
+  // ===========================================================================
+  function render() {
+    // Subtle motion trail for that gooey feel
+    ctx.fillStyle = 'rgba(5, 2, 13, 0.32)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Background grid (parallax-ish — pulses with squash)
+    if (CFG.backgroundGrid) {
+      drawGrid();
+    }
+
+    // Outer halo (largest glow, drawn behind body)
+    if (CFG.renderHalo) {
+      drawHalo();
+    }
+
+    // Body fill — radial gradient so the body is visible but mesh shows through
+    if (CFG.renderBodyFill) {
+      drawBodyFill();
+    }
+
+    // Mesh (springs) — this is the "internal web"
+    if (CFG.renderMesh) {
+      drawMesh();
+    }
+
+    // Outline — smooth curve through outer ring nodes
+    if (CFG.renderOutline) {
+      drawOutline();
+    }
+
+    // Nodes (small dots with glow)
+    drawNodes();
+
+    // Hover indicator
+    if (hoveredNode && !drag) {
+      drawHoverIndicator(hoveredNode);
+    }
+
+    // Particles + shockwaves on top
+    drawDrips();
+    drawShockwaves();
+  }
+
+  function drawGrid() {
+    const step = 48;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(255, 61, 245, ${0.05 + squash * 0.04})`;
+    ctx.beginPath();
+    for (let x = (cx % step); x < W; x += step) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+    }
+    for (let y = (cy % step); y < H; y += step) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHalo() {
+    // Find centroid + average radius for halo center
+    const outer = rings[0];
+    let hx = 0, hy = 0;
+    for (let i = 0; i < outer.length; i++) {
+      hx += outer[i].x;
+      hy += outer[i].y;
+    }
+    hx /= outer.length; hy /= outer.length;
+
+    let avgR = 0;
+    for (let i = 0; i < outer.length; i++) {
+      avgR += Math.hypot(outer[i].x - hx, outer[i].y - hy);
+    }
+    avgR /= outer.length;
+
+    const pulse = 1 + squash * 0.4;
+    const radius = avgR * (1.55 + squash * 0.3) * pulse;
+    const grad = ctx.createRadialGradient(hx, hy, radius * 0.2, hx, hy, radius);
+    grad.addColorStop(0,   hexA(CFG.colorPrimary, 0.32 + squash * 0.25));
+    grad.addColorStop(0.5, hexA(CFG.colorInner, 0.10 + squash * 0.10));
+    grad.addColorStop(1,   hexA(CFG.colorPrimary, 0));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(hx, hy, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBodyFill() {
+    const outer = rings[0];
+    const centroid = centroidOf(outer);
+
+    // Build a smooth polygon through outer nodes using quadratic curves
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Fill
+    ctx.beginPath();
+    for (let i = 0; i < outer.length; i++) {
+      const cur = outer[i];
+      const nxt = outer[(i + 1) % outer.length];
+      const mx = (cur.x + nxt.x) / 2;
+      const my = (cur.y + nxt.y) / 2;
+      if (i === 0) ctx.moveTo(mx, my);
+      else ctx.quadraticCurveTo(cur.x, cur.y, mx, my);
+    }
+    ctx.closePath();
+
+    const r = avgRadius(outer, centroid);
+    const grad = ctx.createRadialGradient(centroid.x, centroid.y, r * 0.05, centroid.x, centroid.y, r * 1.1);
+    grad.addColorStop(0,   hexA(CFG.colorInner,   0.55));
+    grad.addColorStop(0.45, hexA(CFG.colorPrimary, 0.32));
+    grad.addColorStop(1,   hexA(CFG.colorPrimary, 0.06));
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawOutline() {
+    const outer = rings[0];
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Smooth outline
+    ctx.beginPath();
+    for (let i = 0; i < outer.length; i++) {
+      const cur = outer[i];
+      const nxt = outer[(i + 1) % outer.length];
+      const mx = (cur.x + nxt.x) / 2;
+      const my = (cur.y + nxt.y) / 2;
+      if (i === 0) ctx.moveTo(mx, my);
+      else ctx.quadraticCurveTo(cur.x, cur.y, mx, my);
+    }
+    ctx.closePath();
+
+    ctx.shadowColor = CFG.colorPrimary;
+    ctx.shadowBlur = 24 + squash * 30;
+    ctx.strokeStyle = hexA(CFG.colorPrimary, 0.85 + squash * 0.15);
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Inner accent line
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = hexA(CFG.colorAccent, 0.45);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawMesh() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Pass 1: soft glow underlay for all springs
+    ctx.beginPath();
+    for (let i = 0; i < springs.length; i++) {
+      const s = springs[i];
+      ctx.moveTo(s.a.x, s.a.y);
+      ctx.lineTo(s.b.x, s.b.y);
+    }
+    ctx.shadowColor = CFG.colorPrimary;
+    ctx.shadowBlur = 8 + squash * 12;
+    ctx.strokeStyle = hexA(CFG.colorPrimary, 0.22 + squash * 0.12);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Pass 2: per-spring stretch-tinted highlight
+    // Build paths grouped by intensity tier so we can stroke each with its
+    // own colour + lineWidth in a single pass.
+    const tiers = {
+      cyan:  [],   // stretch > 1.10 — cyan accent
+      white: [],   // stretch > 1.45 — white-hot
+    };
+    for (let i = 0; i < springs.length; i++) {
+      const s = springs[i];
+      const cur = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y);
+      const stretch = cur / s.restLength;
+      if (stretch > 1.45) {
+        tiers.white.push(s);
+      } else if (stretch > 1.10) {
+        tiers.cyan.push(s);
+      }
+    }
+
+    // Cyan tier — accent colour, intensity 0..1 from stretch 1.10..1.45
+    if (tiers.cyan.length) {
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = CFG.colorAccent;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let i = 0; i < tiers.cyan.length; i++) {
+        const s = tiers.cyan[i];
+        const cur = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y);
+        const t = clamp((cur / s.restLength - 1.10) / 0.35, 0, 1);
+        ctx.strokeStyle = hexA(CFG.colorAccent, 0.45 + t * 0.50);
+        // Per-line colour requires its own path. The cost is negligible for
+        // typically <100 cyan springs.
+        ctx.beginPath();
+        ctx.moveTo(s.a.x, s.a.y);
+        ctx.lineTo(s.b.x, s.b.y);
+        ctx.stroke();
+      }
+    }
+
+    // White-hot tier — peak tension glow
+    if (tiers.white.length) {
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 14;
+      for (let i = 0; i < tiers.white.length; i++) {
+        const s = tiers.white[i];
+        const cur = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y);
+        const t = clamp((cur / s.restLength - 1.45) / 0.4, 0, 1);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.55 + t * 0.40})`;
+        ctx.beginPath();
+        ctx.moveTo(s.a.x, s.a.y);
+        ctx.lineTo(s.b.x, s.b.y);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawNodes() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      let color = CFG.colorPrimary;
+      let r = n.radius;
+      if (n.kind === 'inner') { color = CFG.colorInner; r = n.radius * 0.95; }
+      if (n.kind === 'core')  { color = CFG.colorAccent; r = n.radius * 1.1; }
+
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = hexA(color, 0.95);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Tiny inner core dot for that "energy node" feel
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, Math.max(1, r * 0.32), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHoverIndicator(n) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = hexA(CFG.colorAccent, 0.7);
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = CFG.colorAccent;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius + 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDrips() {
+    if (!drips.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < drips.length; i++) {
+      const d = drips[i];
+      const t = clamp(d.life / d.maxLife, 0, 1);
+      const alpha = t * t;
+      const r = d.size * (0.5 + t * 0.6);
+      ctx.shadowColor = CFG.colorPrimary;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = hexA(CFG.colorPrimary, alpha * 0.9);
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.7})`;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, Math.max(0.6, r * 0.4), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawShockwaves() {
+    if (!shockwaves.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < shockwaves.length; i++) {
+      const s = shockwaves[i];
+      const t = 1 - clamp(s.life / s.maxLife, 0, 1); // 0 → 1 over lifetime
+      const radius = s.maxRadius * t;
+      const alpha = (1 - t) * clamp(s.intensity / 6, 0.3, 1.0);
+
+      // Outer ring — magenta
+      ctx.shadowColor = CFG.colorPrimary;
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = hexA(CFG.colorPrimary, alpha * 0.85);
+      ctx.lineWidth = 3 - t * 2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner ring — cyan accent
+      ctx.shadowColor = CFG.colorAccent;
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = hexA(CFG.colorAccent, alpha * 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, radius * 0.75, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ===========================================================================
+  // HELPERS
+  // ===========================================================================
+  function centroidOf(ring) {
+    let sx = 0, sy = 0;
+    for (let i = 0; i < ring.length; i++) { sx += ring[i].x; sy += ring[i].y; }
+    return { x: sx / ring.length, y: sy / ring.length };
+  }
+  function avgRadius(ring, c) {
+    let s = 0;
+    for (let i = 0; i < ring.length; i++) s += Math.hypot(ring[i].x - c.x, ring[i].y - c.y);
+    return s / ring.length;
+  }
+  function hexA(hex, a) {
+    // hex like "#rrggbb" -> rgba(r,g,b,a)
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  // ===========================================================================
+  // INPUT
+  // ===========================================================================
+  function pointerDown(x, y) {
+    mouseX = x; mouseY = y;
+    mouseLastX = x; mouseLastY = y;
+    mouseDownX = x; mouseDownY = y;
+    mouseDownTime = performance.now();
+    mouseVx = 0; mouseVy = 0;
+    // Find nearest node within drag radius
+    let best = null, bestD = CFG.dragRadius;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const d = Math.hypot(n.x - x, n.y - y);
+      if (d < bestD) { bestD = d; best = n; }
+    }
+    if (best) {
+      // Prefer outer ring for nicer drag feel
+      const outer = rings[0];
+      let bestOuter = null, bestOuterD = CFG.dragRadius;
+      for (let i = 0; i < outer.length; i++) {
+        const n = outer[i];
+        const d = Math.hypot(n.x - x, n.y - y);
+        if (d < bestOuterD) { bestOuterD = d; bestOuter = n; }
+      }
+      if (bestOuter) best = bestOuter;
+
+      best.pinned = true;
+      best.px = best.x; best.py = best.y;
+      drag = { node: best, offX: best.x - x, offY: best.y - y, moved: 0 };
+      document.body.classList.add('dragging');
+    }
+  }
+  function pointerMove(x, y) {
+    mouseVx = x - mouseLastX;
+    mouseVy = y - mouseLastY;
+    mouseLastX = mouseX; mouseLastY = mouseY;
+    mouseX = x; mouseY = y;
+
+    if (drag) {
+      drag.moved += Math.hypot(mouseVx, mouseVy);
+      drag.node.x = x + drag.offX;
+      drag.node.y = y + drag.offY;
+      drag.node.px = drag.node.x - mouseVx;
+      drag.node.py = drag.node.y - mouseVy;
+      hoveredNode = drag.node;
+    } else {
+      let best = null, bestD = CFG.dragRadius;
+      for (let i = 0; i < rings[0].length; i++) {
+        const n = rings[0][i];
+        const d = Math.hypot(n.x - x, n.y - y);
+        if (d < bestD) { bestD = d; best = n; }
+      }
+      if (hoveredNode && hoveredNode !== best) hoveredNode = null;
+      if (best) hoveredNode = best;
+      document.body.classList.toggle('hovering-node', !!hoveredNode);
+    }
+  }
+  function pointerUp() {
+    const movedDist = drag ? (drag.moved || 0) : Math.hypot(mouseX - mouseDownX, mouseY - mouseDownY);
+    const heldMs = performance.now() - mouseDownTime;
+    const wasTap = movedDist < CFG.clickDragThreshold && heldMs < 350;
+
+    if (drag) {
+      if (wasTap) {
+        applyClickImpulse(mouseX, mouseY);
+      } else {
+        const n = drag.node;
+        const flingBoost = 1.6;
+        n.px = n.x - (n.x - n.px) * flingBoost;
+        n.py = n.y - (n.y - n.py) * flingBoost;
+      }
+      drag.node.pinned = false;
+      drag = null;
+      document.body.classList.remove('dragging');
+    } else if (wasTap) {
+      applyClickImpulse(mouseX, mouseY);
+    }
+  }
+
+  function applyClickImpulse(x, y) {
+    if (CFG.clickImpulse <= 0) return;
+    const radius = CFG.clickRadius;
+    const strength = CFG.clickImpulse;
+    // If a node was grabbed for a tap, release the pin so it can move with the impulse.
+    const wasPinned = drag && drag.node && drag.node.pinned;
+    if (wasPinned) drag.node.pinned = false;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (n.pinned) continue;
+      const dx = n.x - x;
+      const dy = n.y - y;
+      const d = Math.hypot(dx, dy);
+      if (d > radius) continue;
+      const falloff = 1 - d / radius;          // 1 at centre → 0 at edge
+      const inv = 1 / (d || 1e-6);
+      const k = strength * falloff * falloff;
+      // Push AWAY from click point: velocity in (dx,dy) direction = unit(dx,dy) * k
+      n.px = n.x - (dx * inv) * k;
+      n.py = n.y - (dy * inv) * k;
+    }
+    squash = Math.min(1.6, squash + 0.25);
+  }
+
+  // Mouse
+  canvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    pointerDown(e.clientX, e.clientY);
+  });
+  window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup',   () => pointerUp());
+
+  // Touch
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (e.touches.length) {
+      const t = e.touches[0];
+      pointerDown(t.clientX, t.clientY);
+    }
+  }, { passive: false });
+  window.addEventListener('touchmove', e => {
+    if (e.touches.length) {
+      const t = e.touches[0];
+      pointerMove(t.clientX, t.clientY);
+    }
+  }, { passive: true });
+  window.addEventListener('touchend',    () => pointerUp());
+  window.addEventListener('touchcancel', () => pointerUp());
+
+  // Keyboard
+  window.addEventListener('keydown', e => {
+    const k = e.key && e.key.toLowerCase();
+    if (k === 'r') {
+      buildSlime();
+      squash = 0;
+      pointerUp();
+    } else if (k === 'g') {
+      CFG.renderMesh = !CFG.renderMesh;
+    } else if (k === 'b') {
+      CFG.renderBodyFill = !CFG.renderBodyFill;
+    } else if (k === 'h') {
+      CFG.renderHalo = !CFG.renderHalo;
+    } else if (k === 'o') {
+      CFG.renderOutline = !CFG.renderOutline;
+    }
+  });
+
+  // Resize
+  window.addEventListener('resize', () => {
+    resize();
+    buildSlime();
+  });
+
+  // ===========================================================================
+  // SETTINGS PANEL — live wire-up of sliders
+  // ===========================================================================
+  (function wireSliders() {
+    const rows = document.querySelectorAll('#settings-panel .slider-row');
+    rows.forEach(row => {
+      const key = row.dataset.cfg;
+      const min = parseFloat(row.dataset.min);
+      const max = parseFloat(row.dataset.max);
+      const step = parseFloat(row.dataset.step);
+      const input = row.querySelector('input[type=range]');
+      const valEl = row.querySelector('.v');
+      input.min = min; input.max = max; input.step = step;
+      input.value = CFG[key];
+      valEl.textContent = formatSlider(CFG[key], step);
+      input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        CFG[key] = v;
+        valEl.textContent = formatSlider(v, step);
+      });
+    });
+  })();
+  function formatSlider(v, step) {
+    if (step >= 0.1) return v.toFixed(2);
+    if (step >= 0.01) return v.toFixed(2);
+    return v.toFixed(3);
+  }
+
+  // FPS sparkline buffer
+  const sparkCanvas = document.getElementById('fps-spark');
+  const sparkCtx = sparkCanvas.getContext('2d');
+  // Match canvas pixel size to displayed size for crispness
+  function sizeSpark() {
+    const r = sparkCanvas.getBoundingClientRect();
+    sparkCanvas.width = Math.max(1, Math.floor(r.width * DPR));
+    sparkCanvas.height = Math.max(1, Math.floor(r.height * DPR));
+    sparkCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  sizeSpark();
+  window.addEventListener('resize', sizeSpark);
+  const fpsHistory = new Array(60).fill(60);
+
+  function drawSpark() {
+    const w = sparkCanvas.width / DPR;
+    const h = sparkCanvas.height / DPR;
+    sparkCtx.clearRect(0, 0, w, h);
+    // background
+    sparkCtx.fillStyle = 'rgba(255, 61, 245, 0.04)';
+    sparkCtx.fillRect(0, 0, w, h);
+    // line
+    sparkCtx.beginPath();
+    const N = fpsHistory.length;
+    for (let i = 0; i < N; i++) {
+      const v = fpsHistory[i];           // 0..120 fps
+      const x = (i / (N - 1)) * w;
+      const y = h - (v / 120) * h * 0.9 - h * 0.05;
+      if (i === 0) sparkCtx.moveTo(x, y); else sparkCtx.lineTo(x, y);
+    }
+    sparkCtx.strokeStyle = CFG.colorAccent;
+    sparkCtx.lineWidth = 1.4;
+    sparkCtx.shadowColor = CFG.colorAccent;
+    sparkCtx.shadowBlur = 4;
+    sparkCtx.stroke();
+    // last dot
+    const lastY = h - (fpsHistory[N - 1] / 120) * h * 0.9 - h * 0.05;
+    sparkCtx.fillStyle = CFG.colorAccent;
+    sparkCtx.beginPath();
+    sparkCtx.arc(w - 1, lastY, 2, 0, Math.PI * 2);
+    sparkCtx.fill();
+  }
+
+  // ===========================================================================
+  // MAIN LOOP
+  // ===========================================================================
+  let frame = 0;
+  function loop() {
+    step();
+    render();
+
+    // FPS HUD update every ~15 frames
+    fpsFrames++;
+    const now = performance.now();
+    if (now - fpsLast >= 250) {
+      fps = Math.round((fpsFrames * 1000) / (now - fpsLast));
+      fpsFrames = 0;
+      fpsLast = now;
+      const fpsEl = document.getElementById('hud-fps');
+      const sqEl  = document.getElementById('hud-squash');
+      const strEl = document.getElementById('hud-stretch');
+      if (fpsEl) fpsEl.textContent = String(fps);
+      if (sqEl)  sqEl.textContent  = squash.toFixed(2);
+      if (strEl) strEl.textContent = maxStretch.toFixed(2);
+
+      // Update sparkline
+      fpsHistory.shift();
+      fpsHistory.push(fps);
+      drawSpark();
+      maxStretch *= 0.7; // decay so it's "peak recently"
+    }
+
+    frame++;
+    requestAnimationFrame(loop);
+  }
+
+  // ===========================================================================
+  // BOOT
+  // ===========================================================================
+  resize();
+  buildSlime();
+  requestAnimationFrame(loop);
+
+  // Lightweight inspection hook (read-only) — useful for testing/debugging.
+  window.__slime = {
+    get nodes()        { return nodes.map(n => ({ x: n.x, y: n.y, kind: n.kind })); },
+    get outer()        { return rings[0].map(n => ({ x: n.x, y: n.y })); },
+    get centroid()     { const c = centroidOf(rings[0]); return c; },
+    get bounds()       {
+      const ox = rings[0];
+      let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+      for (const n of ox) { if(n.x<minX)minX=n.x; if(n.x>maxX)maxX=n.x; if(n.y<minY)minY=n.y; if(n.y>maxY)maxY=n.y; }
+      return { minX, maxX, minY, maxY, w: maxX-minX, h: maxY-minY };
+    },
+    get stats() {
+      return { nodes: nodes.length, springs: springs.length, squash, w: W, h: H };
+    },
+  };
+})();
+</script>
+</body>
+</html>
