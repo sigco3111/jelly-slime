@@ -8,7 +8,7 @@
 
 ## 🎬 라이브 데모 (Live Demo)
 
-> **👉 [https://jelly-slime.vercel.app/](https://jelly-slime.vercel.app/)** — 브라우저에서 바로 실행
+> **👉 [https://sigco3111.github.io/jelly-slime/](https://sigco3111.github.io/jelly-slime/)** — 브라우저에서 바로 실행
 
 | | |
 |---|---|
@@ -65,7 +65,7 @@ Verlet Integration on Canvas if external libraries are restricted.
 ## 🚀 실행 방법 (Quick Start)
 
 ### 방법 1: 라이브 데모 (가장 간단)
-위 **https://jelly-slime.vercel.app/** 링크 클릭만 하면 됩니다.
+위 **https://sigco3111.github.io/jelly-slime/** 링크 클릭만 하면 됩니다.
 
 ### 방법 2: 그냥 브라우저로 열기
 ```bash
